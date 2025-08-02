@@ -1,15 +1,11 @@
 <script setup>
-import { ref, onMounted, computed } from "vue";
-import { Chart } from "primevue/chart";
+import { computed } from "vue";
+import Chart from "primevue/chart";
+import { useStore } from "vuex";
 
-const parsedData = ref([]);
+const store = useStore();
 
-onMounted(() => {
-  const data = localStorage.getItem("filteredData");
-  if (data) {
-    parsedData.value = JSON.parse(data);
-  }
-});
+const parsedData = computed(() => store.state.filteredData);
 
 const groupedByMetric = computed(() => {
   const map = new Map();
@@ -95,11 +91,20 @@ const chartColors = [
   "#FF7043",
   "#9CCC65",
 ];
+
+void getChartData;
+void chartOptions;
+void Chart;
 </script>
 
 <template>
   <div class="metrics-chart">
     <h3>Графіки метрик</h3>
+
+    <div v-if="parsedData.length === 0">
+      <p>Немає завантажених даних. Будь ласка, завантаж CSV.</p>
+    </div>
+
     <div
       v-for="(experimentGroup, metricName) in groupedByMetric"
       :key="metricName"

@@ -68,9 +68,11 @@
 <script setup>
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
+import { useStore } from "vuex";
 import Papa from "papaparse";
 
 const router = useRouter();
+const store = useStore();
 
 const fileName = ref("");
 const isLoading = ref(false);
@@ -136,7 +138,8 @@ function goToMetrics() {
       selectedMetrics.value.includes(row.metric_name)
   );
 
-  localStorage.setItem("filteredData", JSON.stringify(filteredData));
+  store.dispatch("updateFilteredData", filteredData);
+
   router.push({ name: "Metrics" });
 }
 </script>
