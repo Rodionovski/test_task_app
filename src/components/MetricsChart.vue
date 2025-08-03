@@ -13,6 +13,8 @@ const groupedByMetric = computed(() => {
   for (const row of parsedData.value) {
     const { metric_name, experiment_id, step, value } = row;
 
+    if (!metric_name || !experiment_id) continue;
+
     if (!map.has(metric_name)) {
       map.set(metric_name, {});
     }
@@ -21,22 +23,39 @@ const groupedByMetric = computed(() => {
       map.get(metric_name)[experiment_id] = [];
     }
 
-    map.get(metric_name)[experiment_id].push({
-      x: Number(step),
-      y: Number(value),
-    });
+    const x = Number(step);
+    const y = Number(value);
+    if (!isNaN(x) && !isNaN(y)) {
+      map.get(metric_name)[experiment_id].push({ x, y });
+    }
+  }
+
+  const STEP = 10;
+  for (const metricData of map.values()) {
+    for (const experimentId in metricData) {
+      metricData[experimentId] = metricData[experimentId].filter(
+        (_, idx) => idx % STEP === 0
+      );
+    }
   }
 
   return map;
 });
 
+const groupedByMetricArray = computed(() =>
+  Array.from(groupedByMetric.value.entries())
+);
+
 function getChartData(metricName) {
   const experimentData = groupedByMetric.value.get(metricName) || {};
+
   return {
     datasets: Object.entries(experimentData).map(
       ([experimentId, points], i) => ({
         label: experimentId,
-        data: points.sort((a, b) => a.x - b.x),
+        data: points
+          .filter((p) => typeof p.x === "number" && typeof p.y === "number")
+          .sort((a, b) => a.x - b.x),
         borderColor: chartColors[i % chartColors.length],
         tension: 0.3,
         fill: false,
@@ -91,10 +110,6 @@ const chartColors = [
   "#FF7043",
   "#9CCC65",
 ];
-
-void getChartData;
-void chartOptions;
-void Chart;
 </script>
 
 <template>
@@ -106,7 +121,7 @@ void Chart;
     </div>
 
     <div
-      v-for="(experimentGroup, metricName) in groupedByMetric"
+      v-for="[metricName] in groupedByMetricArray"
       :key="metricName"
       class="chart-container"
     >
@@ -127,5 +142,6 @@ void Chart;
 
 .chart-container {
   margin-bottom: 50px;
+  min-height: 300px;
 }
 </style>

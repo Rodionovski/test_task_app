@@ -1,70 +1,3 @@
-<template>
-  <div class="file-uploader">
-    <input
-      type="file"
-      accept=".csv"
-      @change="onFileChange"
-      :disabled="isLoading"
-      id="fileInput"
-      hidden
-    />
-    <label for="fileInput" class="custom-file-upload">
-      📁 Обрати CSV-файл
-    </label>
-
-    <p v-if="fileName" class="file-name">✅ {{ fileName }}</p>
-    <p v-if="isLoading" class="loading-text">Завантаження файлу...</p>
-    <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
-
-    <div v-if="parsedData.length" class="experiment-selection">
-      <h3>Оберіть експерименти для порівняння:</h3>
-      <div class="actions">
-        <button @click="selectAllExperiments">Вибрати всі</button>
-        <button @click="deselectAllExperiments">Зняти всі</button>
-      </div>
-
-      <div class="experiment-list">
-        <label
-          v-for="id in uniqueExperimentIds"
-          :key="id"
-          class="experiment-item"
-        >
-          <input type="checkbox" :value="id" v-model="selectedExperiments" />
-          {{ id }}
-        </label>
-      </div>
-
-      <h3>Оберіть метрики для відображення:</h3>
-      <div class="actions">
-        <button @click="selectAllMetrics">Вибрати всі</button>
-        <button @click="deselectAllMetrics">Зняти всі</button>
-      </div>
-
-      <div class="metric-list">
-        <label
-          v-for="metric in uniqueMetricNames"
-          :key="metric"
-          class="metric-item"
-        >
-          <input type="checkbox" :value="metric" v-model="selectedMetrics" />
-          {{ metric }}
-        </label>
-      </div>
-    </div>
-
-    <button
-      v-if="parsedData.length"
-      @click="goToMetrics"
-      :disabled="
-        selectedExperiments.length === 0 || selectedMetrics.length === 0
-      "
-      class="go-metrics-btn"
-    >
-      Переглянути графіки
-    </button>
-  </div>
-</template>
-
 <script setup>
 import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
@@ -81,6 +14,15 @@ const parsedData = ref([]);
 const selectedExperiments = ref([]);
 const selectedMetrics = ref([]);
 
+const totalRows = ref(0);
+const parsedRows = ref(0);
+const progressPercent = computed(() =>
+  totalRows.value ? Math.floor((parsedRows.value / totalRows.value) * 100) : 0
+);
+
+const experimentSearch = ref("");
+const metricSearch = ref("");
+
 function onFileChange(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -88,17 +30,27 @@ function onFileChange(event) {
   fileName.value = file.name;
   isLoading.value = true;
   errorMessage.value = "";
+  parsedData.value = [];
+  parsedRows.value = 0;
+  totalRows.value = 0;
 
   Papa.parse(file, {
     header: true,
     skipEmptyLines: true,
-    complete: (results) => {
-      parsedData.value = results.data;
+    chunkSize: 1024 * 1024,
+    step(results) {
+      if (totalRows.value === 0) {
+        totalRows.value = 500000;
+      }
+      parsedData.value.push(results.data);
+      parsedRows.value++;
+    },
+    complete() {
+      isLoading.value = false;
       selectedExperiments.value = uniqueExperimentIds.value;
       selectedMetrics.value = uniqueMetricNames.value;
-      isLoading.value = false;
     },
-    error: (error) => {
+    error(error) {
       errorMessage.value = `Помилка при обробці файлу: ${error.message}`;
       isLoading.value = false;
     },
@@ -113,6 +65,20 @@ const uniqueExperimentIds = computed(() => {
 const uniqueMetricNames = computed(() => {
   const metrics = parsedData.value.map((row) => row.metric_name);
   return [...new Set(metrics)].sort();
+});
+
+const filteredExperimentIds = computed(() => {
+  if (!experimentSearch.value) return uniqueExperimentIds.value;
+  return uniqueExperimentIds.value.filter((id) =>
+    id.toLowerCase().includes(experimentSearch.value.toLowerCase())
+  );
+});
+
+const filteredMetricNames = computed(() => {
+  if (!metricSearch.value) return uniqueMetricNames.value;
+  return uniqueMetricNames.value.filter((m) =>
+    m.toLowerCase().includes(metricSearch.value.toLowerCase())
+  );
 });
 
 function selectAllExperiments() {
@@ -143,6 +109,87 @@ function goToMetrics() {
   router.push({ name: "Metrics" });
 }
 </script>
+
+<template>
+  <div class="file-uploader">
+    <input
+      type="file"
+      accept=".csv"
+      @change="onFileChange"
+      :disabled="isLoading"
+      id="fileInput"
+      hidden
+    />
+    <label for="fileInput" class="custom-file-upload">
+      📁 Обрати CSV-файл
+    </label>
+
+    <p v-if="fileName" class="file-name">✅ {{ fileName }}</p>
+    <p v-if="isLoading" class="loading-text">
+      Завантаження файлу... {{ progressPercent }}%
+    </p>
+    <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+
+    <div v-if="parsedData.length" class="experiment-selection">
+      <h3>Оберіть експерименти для порівняння:</h3>
+      <input
+        type="text"
+        v-model="experimentSearch"
+        placeholder="Пошук експериментів..."
+        class="search-input"
+      />
+      <div class="actions">
+        <button @click="selectAllExperiments">Вибрати всі</button>
+        <button @click="deselectAllExperiments">Зняти всі</button>
+      </div>
+
+      <div class="experiment-list">
+        <label
+          v-for="id in filteredExperimentIds"
+          :key="id"
+          class="experiment-item"
+        >
+          <input type="checkbox" :value="id" v-model="selectedExperiments" />
+          {{ id }}
+        </label>
+      </div>
+
+      <h3>Оберіть метрики для відображення:</h3>
+      <input
+        type="text"
+        v-model="metricSearch"
+        placeholder="Пошук метрик..."
+        class="search-input"
+      />
+      <div class="actions">
+        <button @click="selectAllMetrics">Вибрати всі</button>
+        <button @click="deselectAllMetrics">Зняти всі</button>
+      </div>
+
+      <div class="metric-list">
+        <label
+          v-for="metric in filteredMetricNames"
+          :key="metric"
+          class="metric-item"
+        >
+          <input type="checkbox" :value="metric" v-model="selectedMetrics" />
+          {{ metric }}
+        </label>
+      </div>
+    </div>
+
+    <button
+      v-if="parsedData.length"
+      @click="goToMetrics"
+      :disabled="
+        selectedExperiments.length === 0 || selectedMetrics.length === 0
+      "
+      class="go-metrics-btn"
+    >
+      Переглянути графіки
+    </button>
+  </div>
+</template>
 
 <style scoped>
 .file-uploader {
@@ -183,6 +230,15 @@ function goToMetrics() {
 .error-text {
   color: #e63946;
   font-weight: 700;
+}
+
+.search-input {
+  width: 100%;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
 }
 
 .actions {
